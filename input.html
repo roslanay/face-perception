@@ -85,7 +85,7 @@
 
         async function updateLogsFile(logData) {
             try {
-                const response = await fetch('https://api.github.com/repos/roslanay/face-perception/logs/logs.json', {
+                const response = await fetch('https://api.github.com/repos/roslanay/face-perception/contents/logs/logs.json', {
                     method: 'PUT',
                     headers: {
                         'Authorization': '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',
@@ -113,7 +113,7 @@
         }
 
         async function getSHA() {
-            const response = await fetch('https://api.github.com/repos/roslanay/face-perception/logs/logs.json', {
+            const response = await fetch('https://api.github.com/repos/roslanay/face-perception/contents/logs/logs.json', {
                 headers: {
                     'Authorization': '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',
                 },
