@@ -1,5 +1,5 @@
 <?php
-$logFile = 'logs/logs.json';
+$logFile = 'https://api.github.com/repos/roslanay/face-perception/contents/logs/logs.json';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postData = file_get_contents('php://input');
