@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Face Detection</title>
+    <style>
+        body { display: flex; align-items: flex-start; }
+        video { border: 1px solid black; width: 640px; height: 480px; }
+        canvas { position: absolute; top: 0; left: 0; }
+        .log { margin-left: 20px; max-width: 300px; max-height: 480px; overflow-y: auto; border: 1px solid black; padding: 10px; }
+        .log p { margin: 0; padding: 5px 0; font-family: Arial, sans-serif; font-size: 14px; }
+        .download { margin-left: 20px; }
+    </style>
+</head>
+<body>
+    <video id="video" autoplay muted></video>
+    <canvas id="overlay"></canvas>
+    <div class="log" id="log"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
+    <script>
+        let faceDescriptors = [];
+        let nextFaceId = 1;
+        let logData = [];
+        let lastExportedLogs = {};
+
+        async function setupCamera() {
+            const video = document.getElementById('video');
+            const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+            video.srcObject = stream;
+            return new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    resolve(video);
+                };
+            });
+        }
+
+        async function setupFaceApi() {
+            await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/tiny_face_detector_model-weights_manifest.json');
+            await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/face_landmark_68_model-weights_manifest.json');
+            await faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/face_recognition_model-weights_manifest.json');
+            await faceapi.nets.ageGenderNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/age_gender_model-weights_manifest.json');
+            await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/face_expression_model-weights_manifest.json');
+        }
+
+        function drawDetections(detections, canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            detections.forEach((detection) => {
+                if (detection.detection && detection.detection.box) {
+                    const { x, y, width, height } = detection.detection.box;
+                    ctx.strokeStyle = 'red';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x, y, width, height);
+                    ctx.fillStyle = 'red';
+                    ctx.font = '16px Arial';
+                    ctx.fillText(`ID: ${detection.id}`, x, y - 10);
+                }
+            });
+        }
+
+        function assignFaceIds(detections) {
+            detections.forEach(detection => {
+                const descriptor = detection.descriptor;
+                let bestMatch = { id: null, distance: Infinity };
+
+                faceDescriptors.forEach(face => {
+                    const distance = faceapi.euclideanDistance(face.descriptor, descriptor);
+                    if (distance < bestMatch.distance) {
+                        bestMatch = { id: face.id, distance: distance };
+                    }
+                });
+
+                if (bestMatch.distance < 0.6) {
+                    detection.id = bestMatch.id;
+                    detection.age = faceDescriptors.find(face => face.id === bestMatch.id).age;
+                } else {
+                    detection.id = nextFaceId++;
+                    faceDescriptors.push({ id: detection.id, descriptor: descriptor, age: detection.age });
+                }
+            });
+        }
+
+        async function updateLogsFile(logData) {
+            try {
+                const response = await fetch('https://api.github.com/repos/yourusername/yourrepository/contents/logs/logs.json', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': 'token your_github_personal_access_token',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: 'Update logs.json',
+                        content: btoa(JSON.stringify(logData, null, 2)), // Encode JSON data as base64
+                        sha: await getSHA(), // Get the current SHA of logs.json file
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to save logs. Status: ' + response.status);
+                }
+
+                const result = await response.json();
+                console.log('Logs updated successfully.', result);
+                
+                // Clear logData after saving
+                logData = [];
+            } catch (error) {
+                console.error('Error updating logs:', error);
+            }
+        }
+
+        async function getSHA() {
+            const response = await fetch('https://api.github.com/repos/yourusername/yourrepository/contents/logs/logs.json', {
+                headers: {
+                    'Authorization': 'token your_github_personal_access_token',
+                },
+            });
+            const data = await response.json();
+            return data.sha;
+        }
+
+        function logDetections(detections) {
+            const logDiv = document.getElementById('log');
+            const currentLogs = [];
+
+            // Create a DateTimeFormat object with timezone set to 'Europe/Bucharest' (EEST)
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Europe/Bucharest',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+
+            detections.forEach((detection) => {
+                const currentTime = new Date().getTime();
+                if (detection.detection && detection.detection.box) {
+                    const faceId = detection.id;
+                    if (!lastExportedLogs[faceId] || (currentTime - lastExportedLogs[faceId]) >= 1000) {
+                        const timestamp = formatter.format(new Date()); // Get current timestamp in EEST
+                        const logEntry = {
+                            id: detection.id,
+                            gender: detection.gender,
+                            age: Math.round(detection.age),
+                            emotion: detection.expressions.asSortedArray()[0].expression,
+                            timestamp: timestamp
+                        };
+                        currentLogs.push(logEntry);
+                        lastExportedLogs[faceId] = currentTime;
+
+                        const logElement = document.createElement('p');
+                        logElement.textContent = `ID: ${detection.id}, Gender: ${detection.gender}, Age: ${Math.round(detection.age)}, Emotion: ${detection.expressions.asSortedArray()[0].expression}, Timestamp: ${timestamp}`;
+                        logDiv.prepend(logElement);  // Prepend to show the latest log on top
+                    }
+                }
+            });
+
+            logData = logData.concat(currentLogs);
+        }
+
+        async function main() {
+            await setupFaceApi();
+            const video = await setupCamera();
+            const canvas = document.getElementById('overlay');
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            const displaySize = { width: video.videoWidth, height: video.videoHeight };
+            faceapi.matchDimensions(canvas, displaySize);
+
+            video.addEventListener('play', async () => {
+                const options = new faceapi.TinyFaceDetectorOptions();
+                setInterval(async () => {
+                    const detections = await faceapi.detectAllFaces(video, options)
+                        .withFaceLandmarks()
+                        .withFaceDescriptors()
+                        .withAgeAndGender()
+                        .withFaceExpressions();
+                    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+                    assignFaceIds(resizedDetections);
+                    drawDetections(resizedDetections, canvas);
+                    logDetections(resizedDetections);
+                }, 100);  // Detect every frame
+            });
+
+            // Save logs to GitHub every 11 seconds
+            setInterval(() => updateLogsFile(logData), 11000);
+        }
+
+        main();
+    </script>
+</body>
+</html>

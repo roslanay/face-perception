@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Charts</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { display: flex; justify-content: space-between; }
+        div { width: 33% !important; }
+    </style>
+</head>
+<body>
+    <div>
+        <h2>Gender Distribution</h2>
+        <canvas id="genderChart"></canvas>
+    </div>
+    <div>
+        <h2>Emotion Distribution</h2>
+        <canvas id="emotionChart"></canvas>
+    </div>
+    <div>
+        <h2>Age Distribution</h2>
+        <canvas id="ageChart"></canvas>
+    </div>
+
+    <script>
+        let genderChart, emotionChart, ageChart;
+
+        function fetchAndRenderCharts() {
+            fetch('https://raw.githubusercontent.com/yourusername/yourrepository/main/logs/logs.json')
+                .then(response => response.json())
+                .then(data => {
+                    const genders = {};
+                    const emotions = {};
+                    const ages = {};
+
+                    data.forEach(log => {
+                        if (genders[log.gender]) {
+                            genders[log.gender]++;
+                        } else {
+                            genders[log.gender] = 1;
+                        }
+
+                        if (emotions[log.emotion]) {
+                            emotions[log.emotion]++;
+                        } else {
+                            emotions[log.emotion] = 1;
+                        }
+
+                        if (ages[log.age]) {
+                            ages[log.age]++;
+                        } else {
+                            ages[log.age] = 1;
+                        }
+                    });
+
+                    // Update genderChart
+                    if (genderChart) {
+                        genderChart.data.labels = Object.keys(genders);
+                        genderChart.data.datasets[0].data = Object.values(genders);
+                        genderChart.update();
+                    } else {
+                        const genderCtx = document.getElementById('genderChart').getContext('2d');
+                        genderChart = new Chart(genderCtx, {
+                            type: 'pie',
+                            data: {
+                                labels: Object.keys(genders),
+                                datasets: [{
+                                    label: 'Gender Distribution',
+                                    data: Object.values(genders),
+                                    backgroundColor: ['#FF6384', '#36A2EB']
+                                }]
+                            }
+                        });
+                    }
+
+                    // Update emotionChart
+                    if (emotionChart) {
+                        emotionChart.data.labels = Object.keys(emotions);
+                        emotionChart.data.datasets[0].data = Object.values(emotions);
+                        emotionChart.update();
+                    } else {
+                        const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+                        emotionChart = new Chart(emotionCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: Object.keys(emotions),
+                                datasets: [{
+                                    label: 'Emotion Distribution',
+                                    data: Object.values(emotions),
+                                    backgroundColor: '#FFCE56'
+                                }]
+                            }
+                        });
+                    }
+
+                    // Update ageChart
+                    if (ageChart) {
+                        ageChart.data.labels = Object.keys(ages);
+                        ageChart.data.datasets[0].data = Object.values(ages);
+                        ageChart.update();
+                    } else {
+                        const ageCtx = document.getElementById('ageChart').getContext('2d');
+                        ageChart = new Chart(ageCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: Object.keys(ages),
+                                datasets: [{
+                                    label: 'Age Distribution',
+                                    data: Object.values(ages),
+                                    backgroundColor: '#4BC0C0'
+                                }]
+                            }
+                        });
+                    }
+                })
+                .catch(error => console.error('Error fetching the logs:', error));
+        }
+
+        fetchAndRenderCharts();
+        setInterval(fetchAndRenderCharts, 11000);
+    </script>
+</body>
+</html>
